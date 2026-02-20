@@ -568,7 +568,7 @@ footer {
 // ─── Firebase config (safe to be public — read-only rules enforced server-side) ───
 import { initializeApp }              from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
 import { getFirestore, collection,
-         getDocs, query, orderBy }    from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+         getDocs, query, orderBy, doc, updateDoc }    from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDZWjj5u6FtqY-byekmablDkk40b8kcUXc",
@@ -691,11 +691,21 @@ window.openModal = function(id) {
        </div>`;
 
   const tags = (b.tags||[]).map(t=>`<span class="modal-tag">${esc(t)}</span>`).join("");
+  // build list-select with current selection
+  const optNone = `<option value="">— Assign list —</option>`;
+  const optToRead = `<option value="To Read"${b.list==="To Read" ? ' selected' : ''}>To Read</option>`;
+  const optToBuy  = `<option value="To Buy"${b.list==="To Buy" ? ' selected' : ''}>To Buy</option>`;
+  const optRead   = `<option value="Read"${b.list==="Read" ? ' selected' : ''}>Read</option>`;
 
   document.getElementById("modalBody").innerHTML = `
     <div class="modal-cover-wrap">${coverHtml}</div>
     <div class="modal-info">
-      ${b.list ? `<span class="modal-list-tag ${mltClass}">${b.list}</span>` : ""}
+      <span id="modalListTag" class="modal-list-tag ${mltClass}">${b.list||""}</span>
+      <div style="margin:0.6rem 0 0.9rem">
+        <select id="modal-list-select" onchange="onModalListChange('${esc(b.id)}', this)">
+          ${optNone}${optToRead}${optToBuy}${optRead}
+        </select>
+      </div>
       <h2 class="modal-title">${esc(b.title||"Untitled")}</h2>
       <p class="modal-author">${esc(b.author||"")}</p>
       ${b.publisher ? `<p class="modal-detail"><strong>Publisher</strong> ${esc(b.publisher)}</p>` : ""}
@@ -724,6 +734,37 @@ function esc(s) {
   return String(s)
     .replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Update a book locally and attempt to persist to Firestore
+window.onModalListChange = async function(bookId, sel) {
+  const newList = sel.value || null;
+  updateBookListLocally(bookId, newList);
+  // attempt to persist change to Firestore (may be disallowed by rules)
+  try {
+    const docRef = doc(db, "books", bookId);
+    await updateDoc(docRef, { list: newList });
+  } catch (err) {
+    console.warn('Could not persist list change to backend:', err);
+  }
+}
+
+function updateBookListLocally(bookId, newList) {
+  const b = allBooks.find(x => x.id === bookId);
+  if (!b) return;
+  // normalize null -> empty string for UI
+  b.list = newList || "";
+  renderStats(allBooks);
+  renderTags(allBooks);
+  applyFilters();
+  // update modal tag if visible
+  const tagEl = document.getElementById('modalListTag');
+  if (tagEl) {
+    const listKey = (b.list||"").toLowerCase().replace(/\s+/g,'-');
+    const cls = { 'to-read':'mlt-to-read','to-buy':'mlt-to-buy','read':'mlt-read' }[listKey] || '';
+    tagEl.className = 'modal-list-tag ' + cls;
+    tagEl.textContent = b.list || '';
+  }
 }
 
 // ── Events ─────────────────────────────────────
