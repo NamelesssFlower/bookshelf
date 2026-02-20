@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>My Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --yellow:   #f5e6a3;
+  --yellow-d: #e8d47a;
+  --blush:    #f2c4c4;
+  --blue:     #b8d4e8;
+  --blue-d:   #8ab5d1;
+  --mint:     #c4dfd4;
+  --lavender: #d4c4e8;
+  --bg:       #fdf8f0;
+  --bg2:      #faf3e8;
+  --ink:      #2a2118;
+  --ink2:     #5a4f42;
+  --ink3:     #9a8f82;
+  --border:   #e8dfd0;
+  --white:    #ffffff;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 300;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── decorative grain overlay ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--yellow);
+  padding: 3rem 2.5rem 2.5rem;
+  position: relative;
+  overflow: hidden;
+  border-bottom: 2px solid var(--yellow-d);
+}
+header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: 0; right: 0;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--blush) 0px, var(--blush) 40px,
+    var(--blue) 40px, var(--blue) 80px,
+    var(--mint) 80px, var(--mint) 120px,
+    var(--lavender) 120px, var(--lavender) 160px,
+    var(--yellow-d) 160px, var(--yellow-d) 200px
+  );
+}
+
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.header-left {}
+
+.eyebrow {
+  font-size: 0.65rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink2);
+  margin-bottom: 0.4rem;
+  font-weight: 500;
+}
+
+.site-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(2.6rem, 6vw, 4.2rem);
+  font-weight: 600;
+  line-height: 0.95;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.site-title em {
+  font-style: italic;
+  font-weight: 400;
+}
+
+.header-stats {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.stat-pill {
+  background: rgba(255,255,255,0.6);
+  border: 1px solid rgba(255,255,255,0.9);
+  border-radius: 99px;
+  padding: 0.4rem 1rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--ink2);
+  backdrop-filter: blur(4px);
+}
+.stat-pill strong {
+  color: var(--ink);
+  font-weight: 500;
+  margin-right: 0.3rem;
+}
+
+/* ── CONTROLS ── */
+.controls-bar {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 0.9rem 2.5rem;
+}
+.controls-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.4rem 1rem;
+  border-radius: 99px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--ink3);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+.filter-btn:hover { border-color: var(--ink2); color: var(--ink); }
+
+.filter-btn.active[data-list="all"]      { background: var(--ink);      border-color: var(--ink);    color: white; }
+.filter-btn.active[data-list="To Read"]  { background: var(--mint);     border-color: var(--mint);   color: var(--ink); }
+.filter-btn.active[data-list="To Buy"]   { background: var(--blush);    border-color: var(--blush);  color: var(--ink); }
+.filter-btn.active[data-list="Read"]     { background: var(--blue);     border-color: var(--blue);   color: var(--ink); }
+
+.search-wrap {
+  margin-left: auto;
+  position: relative;
+}
+.search-wrap svg {
+  position: absolute;
+  left: 0.75rem; top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink3);
+  pointer-events: none;
+}
+.search-wrap input {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 300;
+  padding: 0.42rem 1rem 0.42rem 2.2rem;
+  border: 1.5px solid var(--border);
+  border-radius: 99px;
+  background: var(--white);
+  color: var(--ink);
+  outline: none;
+  width: 200px;
+  transition: border-color 0.18s;
+}
+.search-wrap input:focus { border-color: var(--ink2); }
+.search-wrap input::placeholder { color: var(--border); }
+
+/* ── TAG BAR ── */
+.tag-bar {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0.8rem 2.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 44px;
+}
+.tag-pill {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.22rem 0.7rem;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink3);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tag-pill:hover, .tag-pill.active {
+  background: var(--lavender);
+  border-color: var(--lavender);
+  color: var(--ink);
+}
+
+/* ── SECTION LABEL ── */
+.section-label {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0.2rem 2.5rem 1.2rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink3);
+  font-weight: 400;
+}
+.section-label span { color: var(--ink); font-weight: 500; }
+
+/* ── GRID ── */
+.grid-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 2.5rem 4rem;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 1.8rem 1.2rem;
+}
+
+/* ── BOOK CARD ── */
+.book-card {
+  cursor: pointer;
+  animation: fadeUp 0.5s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cover-wrap {
+  position: relative;
+  aspect-ratio: 2/3;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--border);
+  box-shadow:
+    2px 3px 0px var(--border),
+    3px 5px 12px rgba(42,33,24,0.12),
+    0 1px 3px rgba(42,33,24,0.08);
+  transition: transform 0.3s cubic-bezier(.34,1.56,.64,1), box-shadow 0.3s ease;
+}
+.book-card:hover .cover-wrap {
+  transform: translateY(-6px) rotate(-1deg) scale(1.02);
+  box-shadow:
+    2px 3px 0px var(--border),
+    6px 14px 28px rgba(42,33,24,0.18),
+    0 2px 6px rgba(42,33,24,0.10);
+}
+
+.cover-wrap img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: filter 0.3s;
+}
+
+.cover-placeholder {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 0.8rem;
+  text-align: center;
+}
+.cover-placeholder.cp-yellow { background: var(--yellow); }
+.cover-placeholder.cp-blush  { background: var(--blush); }
+.cover-placeholder.cp-blue   { background: var(--blue); }
+.cover-placeholder.cp-mint   { background: var(--mint); }
+.cover-placeholder.cp-lav    { background: var(--lavender); }
+
+.cp-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.cp-author {
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink2);
+  margin-top: 0.5rem;
+}
+
+/* list dot */
+.list-dot {
+  position: absolute;
+  top: 0.45rem; right: 0.45rem;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.8);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.dot-to-read  { background: #7ec8a0; }
+.dot-to-buy   { background: #f2a0a0; }
+.dot-read     { background: #8ab5d1; }
+
+.book-meta {
+  margin-top: 0.65rem;
+  padding: 0 0.1rem;
+}
+.meta-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta-author {
+  font-size: 0.65rem;
+  color: var(--ink3);
+  margin-top: 0.15rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── MODAL ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(42,33,24,0.55);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  padding: 1.5rem;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+
+.modal {
+  background: var(--white);
+  max-width: 520px; width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  transform: scale(0.94) translateY(8px);
+  transition: transform 0.28s cubic-bezier(.34,1.3,.64,1);
+  max-height: 90vh;
+  display: flex; flex-direction: column;
+}
+.modal-overlay.open .modal { transform: scale(1) translateY(0); }
+
+/* coloured top stripe */
+.modal-stripe {
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--yellow) 0, var(--yellow) 25%,
+    var(--blush)  25%, var(--blush)  50%,
+    var(--blue)   50%, var(--blue)   75%,
+    var(--mint)   75%, var(--mint)   100%
+  );
+}
+
+.modal-body {
+  display: flex; gap: 1.5rem;
+  padding: 1.6rem;
+  overflow-y: auto;
+}
+
+.modal-cover-wrap {
+  width: 100px; flex-shrink: 0;
+  aspect-ratio: 2/3;
+  border-radius: 3px; overflow: hidden;
+  box-shadow: 3px 5px 16px rgba(42,33,24,0.18);
+  background: var(--border);
+}
+.modal-cover-wrap img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+.modal-info { flex: 1; min-width: 0; }
+
+.modal-list-tag {
+  display: inline-block;
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding: 0.2rem 0.65rem;
+  border-radius: 99px;
+  margin-bottom: 0.7rem;
+}
+.mlt-to-read { background: var(--mint);     color: var(--ink); }
+.mlt-to-buy  { background: var(--blush);    color: var(--ink); }
+.mlt-read    { background: var(--blue);     color: var(--ink); }
+
+.modal-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 0.25rem;
+}
+.modal-author {
+  font-size: 0.78rem;
+  color: var(--ink2);
+  margin-bottom: 0.9rem;
+  letter-spacing: 0.04em;
+}
+.modal-detail {
+  font-size: 0.72rem;
+  color: var(--ink3);
+  margin-bottom: 0.25rem;
+}
+.modal-detail strong { color: var(--ink2); font-weight: 500; }
+
+.modal-tags {
+  display: flex; flex-wrap: wrap; gap: 0.3rem;
+  margin: 0.7rem 0;
+}
+.modal-tag {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.6rem;
+  border-radius: 99px;
+  background: var(--yellow);
+  color: var(--ink2);
+  border: 1px solid var(--yellow-d);
+}
+
+.modal-notes {
+  margin-top: 0.8rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg);
+  border-radius: 4px;
+  border-left: 3px solid var(--blush);
+  font-size: 0.8rem;
+  line-height: 1.65;
+  color: var(--ink2);
+  font-style: italic;
+}
+
+.modal-close {
+  position: absolute; top: 1rem; right: 1rem;
+  background: var(--bg); border: 1px solid var(--border);
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--ink2); font-size: 1rem;
+  transition: background 0.15s;
+  line-height: 1;
+}
+.modal-close:hover { background: var(--blush); }
+
+/* ── EMPTY / LOADING ── */
+.state-msg {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 5rem 2rem;
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-size: 1.1rem;
+  color: var(--ink3);
+}
+
+/* ── FOOTER ── */
+footer {
+  text-align: center;
+  padding: 1.5rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--border);
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 600px) {
+  header, .controls-bar, .tag-bar, .grid-wrap, .section-label { padding-left: 1.2rem; padding-right: 1.2rem; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 1.4rem 0.9rem; }
+  .header-stats { display: none; }
+  .search-wrap { margin-left: 0; }
+  .search-wrap input { width: 160px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="header-inner">
+    <div class="header-left">
+      <p class="eyebrow">A reading record</p>
+      <h1 class="site-title">My <em>Library</em></h1>
+    </div>
+    <div class="header-stats">
+      <div class="stat-pill"><strong id="statToRead">—</strong> to read</div>
+      <div class="stat-pill"><strong id="statToBuy">—</strong> to buy</div>
+      <div class="stat-pill"><strong id="statRead">—</strong> read</div>
+    </div>
+  </div>
+</header>
+
+<!-- CONTROLS -->
+<div class="controls-bar">
+  <div class="controls-inner">
+    <button class="filter-btn active" data-list="all">All</button>
+    <button class="filter-btn" data-list="To Read">📚 To Read</button>
+    <button class="filter-btn" data-list="To Buy">🛒 To Buy</button>
+    <button class="filter-btn" data-list="Read">✓ Read</button>
+    <div class="search-wrap">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="search" placeholder="Search…"/>
+    </div>
+  </div>
+</div>
+
+<!-- TAGS -->
+<div class="tag-bar" id="tagBar"></div>
+
+<!-- COUNT -->
+<p class="section-label" id="sectionLabel"></p>
+
+<!-- GRID -->
+<div class="grid-wrap">
+  <div class="grid" id="grid">
+    <p class="state-msg">Loading your library…</p>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <div class="modal-stripe"></div>
+    <div class="modal-body" id="modalBody"></div>
+    <button class="modal-close" onclick="closeModal()">×</button>
+  </div>
+</div>
+
+<footer>Updated live · My Library</footer>
+
+<script>
+// ─── CONFIG ───────────────────────────────────
+const AIRTABLE_API_KEY = "patfe9Lvrx5VRxgZ6.9d03ef17ad51be02a10b644af5ee1e7d95c439d2c1cfc702a74497bb9df6eb43";
+const AIRTABLE_BASE_ID = "appVVvwt9KyiMkf6T";
+const AIRTABLE_TABLE   = "Books";
+// ─────────────────────────────────────────────
+
+let allBooks    = [];
+let activeList  = "all";
+let activeTag   = null;
+let searchQuery = "";
+
+const PLACEHOLDER_COLORS = ["cp-yellow","cp-blush","cp-blue","cp-mint","cp-lav"];
+
+function placeholderColor(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) & 0xffffffff;
+  return PLACEHOLDER_COLORS[Math.abs(h) % PLACEHOLDER_COLORS.length];
+}
+
+// ── Fetch ──────────────────────────────────────
+async function fetchBooks() {
+  let records = [], offset = null;
+  do {
+    const p = new URLSearchParams({
+      "sort[0][field]": "Date Added",
+      "sort[0][direction]": "desc",
+      pageSize: "100",
+    });
+    if (offset) p.set("offset", offset);
+    const r = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}?${p}`,
+      { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
+    );
+    const d = await r.json();
+    records = records.concat(d.records || []);
+    offset = d.offset || null;
+  } while (offset);
+  return records.map(r => ({ id: r.id, ...r.fields }));
+}
+
+// ── Render grid ────────────────────────────────
+function renderGrid(books) {
+  const grid = document.getElementById("grid");
+  const label = document.getElementById("sectionLabel");
+
+  if (!books.length) {
+    grid.innerHTML = '<p class="state-msg">No books match your filters.</p>';
+    label.innerHTML = "";
+    return;
+  }
+
+  label.innerHTML = `Showing <span>${books.length}</span> book${books.length !== 1 ? "s" : ""}`;
+
+  grid.innerHTML = books.map((b, i) => {
+    const listKey  = (b["List"] || "").toLowerCase().replace(/\s+/g,"-");
+    const dotClass = { "to-read":"dot-to-read","to-buy":"dot-to-buy","read":"dot-read" }[listKey] || "";
+    const delay    = Math.min(i * 25, 500);
+    const cover    = b["Cover URL"] || "";
+    const cpClass  = placeholderColor(b.Title || "");
+
+    const coverHtml = cover
+      ? `<img src="${esc(cover)}" alt="${esc(b.Title||"")}" loading="lazy"/>`
+      : `<div class="cover-placeholder ${cpClass}">
+           <div class="cp-title">${esc(b.Title||"")}</div>
+           <div class="cp-author">${esc(b.Author||"")}</div>
+         </div>`;
+
+    return `
+    <div class="book-card" style="animation-delay:${delay}ms" onclick="openModal('${b.id}')">
+      <div class="cover-wrap">
+        ${coverHtml}
+        ${dotClass ? `<div class="list-dot ${dotClass}"></div>` : ""}
+      </div>
+      <div class="book-meta">
+        <div class="meta-title">${esc(b.Title||"Untitled")}</div>
+        <div class="meta-author">${esc(b.Author||"")}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ── Render tags ────────────────────────────────
+function renderTags(books) {
+  const counts = {};
+  books.forEach(b => (b["Tags"]||[]).forEach(t => counts[t] = (counts[t]||0)+1));
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,24);
+  const bar = document.getElementById("tagBar");
+  if (!sorted.length) { bar.innerHTML=""; return; }
+  bar.innerHTML = sorted.map(([tag])=>
+    `<button class="tag-pill${activeTag===tag?" active":""}" onclick="toggleTag('${esc(tag)}')">${esc(tag)}</button>`
+  ).join("");
+}
+
+// ── Stats ──────────────────────────────────────
+function renderStats(all) {
+  document.getElementById("statToRead").textContent = all.filter(b=>b["List"]==="To Read").length;
+  document.getElementById("statToBuy").textContent  = all.filter(b=>b["List"]==="To Buy").length;
+  document.getElementById("statRead").textContent   = all.filter(b=>b["List"]==="Read").length;
+}
+
+// ── Filter ─────────────────────────────────────
+function applyFilters() {
+  let books = allBooks;
+  if (activeList !== "all") books = books.filter(b => b["List"] === activeList);
+  if (activeTag)            books = books.filter(b => (b["Tags"]||[]).includes(activeTag));
+  if (searchQuery)          books = books.filter(b =>
+    (b.Title||"").toLowerCase().includes(searchQuery) ||
+    (b.Author||"").toLowerCase().includes(searchQuery)
+  );
+  renderGrid(books);
+}
+
+// ── Modal ──────────────────────────────────────
+function openModal(id) {
+  const b = allBooks.find(x => x.id === id);
+  if (!b) return;
+  const listKey  = (b["List"]||"").toLowerCase().replace(/\s+/g,"-");
+  const listLabel = b["List"] || "";
+  const mltClass  = { "to-read":"mlt-to-read","to-buy":"mlt-to-buy","read":"mlt-read" }[listKey]||"";
+  const cover = b["Cover URL"]||"";
+  const cpClass = placeholderColor(b.Title||"");
+
+  const coverHtml = cover
+    ? `<img src="${esc(cover)}" alt="${esc(b.Title||"")}"/>`
+    : `<div class="cover-placeholder ${cpClass}" style="width:100%;height:100%;border-radius:3px">
+         <div class="cp-title">${esc(b.Title||"")}</div>
+         <div class="cp-author">${esc(b.Author||"")}</div>
+       </div>`;
+
+  const tags = (b["Tags"]||[]).map(t=>`<span class="modal-tag">${esc(t)}</span>`).join("");
+
+  document.getElementById("modalBody").innerHTML = `
+    <div class="modal-cover-wrap">${coverHtml}</div>
+    <div class="modal-info">
+      ${listLabel ? `<span class="modal-list-tag ${mltClass}">${listLabel}</span>` : ""}
+      <h2 class="modal-title">${esc(b.Title||"Untitled")}</h2>
+      <p class="modal-author">${esc(b.Author||"")}</p>
+      ${b.Publisher ? `<p class="modal-detail"><strong>Publisher</strong> ${esc(b.Publisher)}</p>` : ""}
+      ${b["Published Year"] ? `<p class="modal-detail"><strong>Year</strong> ${b["Published Year"]}</p>` : ""}
+      ${b.Genre ? `<p class="modal-detail"><strong>Genre</strong> ${esc(b.Genre)}</p>` : ""}
+      ${tags ? `<div class="modal-tags">${tags}</div>` : ""}
+      ${b.Notes ? `<div class="modal-notes">${esc(b.Notes)}</div>` : ""}
+    </div>
+  `;
+  document.getElementById("modalOverlay").classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+
+function closeModal() {
+  document.getElementById("modalOverlay").classList.remove("open");
+  document.body.style.overflow = "";
+}
+
+function toggleTag(tag) {
+  activeTag = activeTag === tag ? null : tag;
+  renderTags(allBooks);
+  applyFilters();
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ── Events ─────────────────────────────────────
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    activeList = btn.dataset.list;
+    applyFilters();
+  });
+});
+
+document.getElementById("search").addEventListener("input", e => {
+  searchQuery = e.target.value.toLowerCase();
+  applyFilters();
+});
+
+document.getElementById("modalOverlay").addEventListener("click", e => {
+  if (e.target === document.getElementById("modalOverlay")) closeModal();
+});
+
+document.addEventListener("keydown", e => { if (e.key==="Escape") closeModal(); });
+
+// ── Init ───────────────────────────────────────
+(async () => {
+  try {
+    allBooks = await fetchBooks();
+    renderStats(allBooks);
+    renderTags(allBooks);
+    applyFilters();
+  } catch(e) {
+    document.getElementById("grid").innerHTML =
+      `<p class="state-msg">Couldn't load library. Check your API key & Base ID.</p>`;
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>
+
+
