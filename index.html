@@ -525,6 +525,7 @@ footer {
     </div>
     <div style="display:flex;align-items:center;gap:0.6rem;">
       <button id="authBtn" class="filter-btn">Sign in</button>
+      <button id="quickAddBtn" class="filter-btn">Add link</button>
     </div>
   </div>
 </header>
@@ -789,6 +790,35 @@ function updateAuthButton(user) {
 
 // expose auth for debugging in the console
 window.auth = auth;
+
+// Quick add from URL: open prompt and POST to backend
+document.addEventListener('DOMContentLoaded', () => {
+  const quickBtn = document.getElementById('quickAddBtn');
+  if (!quickBtn) return;
+  quickBtn.addEventListener('click', async () => {
+    const url = prompt('Paste a book URL or title to add:');
+    if (!url) return;
+    quickBtn.disabled = true;
+    const prev = quickBtn.textContent;
+    quickBtn.textContent = 'Adding…';
+    try {
+      const res = await fetch('/api/add-book', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ input: url })
+      });
+      const data = await res.json();
+      if (!res.ok) throw data;
+      alert('Added: ' + (data.book?.title || data.book?.title || 'OK'));
+      location.reload();
+    } catch (err) {
+      console.error('Quick add failed', err);
+      alert('Failed to add: ' + (err?.error || err?.message || JSON.stringify(err)));
+    } finally {
+      quickBtn.disabled = false;
+      quickBtn.textContent = prev;
+    }
+  });
+});
 
 onAuthStateChanged(auth, user => {
   updateAuthButton(user);
