@@ -25,16 +25,27 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT }}
 
-      - name: Build container with Cloud Build
+      - name: Configure docker for gcr
         run: |
-          IMAGE=gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.CLOUD_RUN_SERVICE }}
-          gcloud builds submit --tag $IMAGE
+          echo "Configuring docker to use gcloud for auth"
+          gcloud auth configure-docker --quiet
+
+      - name: Build and push Docker image (runner)
+        env:
+          IMAGE: gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.CLOUD_RUN_SERVICE }}:${{ github.sha }}
+        run: |
+          echo "Building $IMAGE"
+          docker build -t "$IMAGE" .
+          echo "Pushing $IMAGE"
+          docker push "$IMAGE"
 
       - name: Deploy to Cloud Run
+        env:
+          IMAGE: gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.CLOUD_RUN_SERVICE }}:${{ github.sha }}
         run: |
-          IMAGE=gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.CLOUD_RUN_SERVICE }}
+          echo "Deploying $IMAGE to Cloud Run"
           gcloud run deploy ${{ secrets.CLOUD_RUN_SERVICE }} \
-            --image $IMAGE \
+            --image "$IMAGE" \
             --region ${{ secrets.GCP_REGION }} \
             --platform managed \
             --allow-unauthenticated
