@@ -523,6 +523,9 @@ footer {
       <div class="stat-pill"><strong id="statToBuy">—</strong> to buy</div>
       <div class="stat-pill"><strong id="statRead">—</strong> read</div>
     </div>
+    <div style="display:flex;align-items:center;gap:0.6rem;">
+      <button id="authBtn" class="filter-btn">Sign in</button>
+    </div>
   </div>
 </header>
 
@@ -569,6 +572,7 @@ footer {
 import { initializeApp }              from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
 import { getFirestore, collection,
          getDocs, query, orderBy, doc, updateDoc }    from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDZWjj5u6FtqY-byekmablDkk40b8kcUXc",
@@ -581,6 +585,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
 
 let allBooks    = [];
 let activeList  = "all";
@@ -748,6 +754,41 @@ window.onModalListChange = async function(bookId, sel) {
     console.warn('Could not persist list change to backend:', err);
   }
 }
+
+// --- Authentication helpers ---
+window.ensureSignedIn = async function() {
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (err) {
+    console.error('Sign-in failed', err);
+  }
+}
+
+window.signOutUser = async function() {
+  try {
+    await signOut(auth);
+  } catch (err) {
+    console.error('Sign-out failed', err);
+  }
+}
+
+function updateAuthButton(user) {
+  const btn = document.getElementById('authBtn');
+  if (!btn) return;
+  if (user) {
+    btn.textContent = user.email;
+    btn.onclick = () => signOutUser();
+    btn.classList.add('active');
+  } else {
+    btn.textContent = 'Sign in';
+    btn.onclick = () => ensureSignedIn();
+    btn.classList.remove('active');
+  }
+}
+
+onAuthStateChanged(auth, user => {
+  updateAuthButton(user);
+});
 
 function updateBookListLocally(bookId, newList) {
   const b = allBooks.find(x => x.id === bookId);
