@@ -1,40 +1,90 @@
 #!/usr/bin/env python3
 """
-📚 Book Tracker — Add a book to your Airtable library
+📚 Book Tracker — Add a book to your Firebase library
 Usage: python3 add_book.py <any_url_or_title>
-
-Supports: Amazon, Goodreads, publisher sites, bookshops, any webpage
-Cover images are pulled directly from the source page — always edition-accurate.
 """
 
 import sys
 import re
 import json
 import html
+import os
+import pathlib
 import urllib.request
 import urllib.parse
 import urllib.error
-from datetime import date
+from datetime import datetime, timezone
 
-# ─────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────
-AIRTABLE_API_KEY = "patfe9Lvrx5VRxgZ6.9d03ef17ad51be02a10b644af5ee1e7d95c439d2c1cfc702a74497bb9df6eb43"
-AIRTABLE_BASE_ID = "appVVvwt9KyiMkf6T"
-AIRTABLE_TABLE   = "Books"
+# ── Load .env ─────────────────────────────────
+def _load_env():
+    env_file = pathlib.Path(__file__).parent / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, val = line.partition("=")
+                os.environ.setdefault(key.strip(), val.strip())
+_load_env()
+
+# ── Find service account JSON ─────────────────
+def _find_service_account() -> pathlib.Path | None:
+    here = pathlib.Path(__file__).parent
+
+    # 1. Explicit env var
+    explicit = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if explicit and pathlib.Path(explicit).exists():
+        return pathlib.Path(explicit)
+
+    # 2. Known filename (your downloaded file)
+    known = here / "bookshelf-1d2b7-firebase-adminsdk-fbsvc-e366add83c.json"
+    if known.exists():
+        return known
+
+    # 3. Auto-detect any adminsdk / service-account JSON in same folder
+    for pattern in ["*firebase-adminsdk*.json", "*service-account*.json"]:
+        matches = list(here.glob(pattern))
+        if matches:
+            return matches[0]
+
+    return None
+
+SERVICE_ACCOUNT = _find_service_account()
 # ─────────────────────────────────────────────
 
+
+def init_firebase():
+    """Initialise firebase-admin. Install with: pip3 install firebase-admin"""
+    try:
+        import firebase_admin
+        from firebase_admin import credentials, firestore
+    except ImportError:
+        print("\n  ✗  firebase-admin is not installed.")
+        print("     Fix: pip3 install firebase-admin --break-system-packages")
+        sys.exit(1)
+
+    if SERVICE_ACCOUNT is None:
+        print("\n  ✗  Service account JSON not found.")
+        print("     Make sure this file is in the same folder as add_book.py:")
+        print("     bookshelf-1d2b7-firebase-adminsdk-fbsvc-e366add83c.json")
+        sys.exit(1)
+
+    print(f"  🔑  Service account: {SERVICE_ACCOUNT.name}")
+
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(str(SERVICE_ACCOUNT))
+        firebase_admin.initialize_app(cred)
+
+    return firestore.client()
+
+
+# ── Page fetching ─────────────────────────────
 
 def is_url(s: str) -> bool:
     return s.startswith("http://") or s.startswith("https://")
 
 
 def fetch_page_info(url: str) -> dict:
-    """
-    Fetch a webpage and extract:
-      - title: best available title string
-      - cover: og:image URL (edition-accurate cover from the actual page)
-    """
+    """Fetch og:title and og:image from any webpage."""
     result = {"title": None, "cover": None}
     try:
         req = urllib.request.Request(url, headers={
@@ -52,19 +102,15 @@ def fetch_page_info(url: str) -> dict:
         print(f"  ⚠️  Could not fetch page: {e}")
         return result
 
-    # ── Cover: og:image ──────────────────────────────────────────────────────
-    # Try both attribute orderings
     for pattern in [
         r'property=["\']og:image["\'][^>]+content=["\'](https?://[^"\']+)["\']',
         r'content=["\'](https?://[^"\']+)["\'][^>]+property=["\']og:image["\']',
-        r'name=["\']og:image["\'][^>]+content=["\'](https?://[^"\']+)["\']',
     ]:
         m = re.search(pattern, raw, re.I)
         if m:
             result["cover"] = html.unescape(m.group(1).strip())
             break
 
-    # ── Title: og:title > <title> > <h1> ────────────────────────────────────
     for pattern in [
         r'property=["\']og:title["\'][^>]+content=["\'](.*?)["\']',
         r'content=["\'](.*?)["\'][^>]+property=["\']og:title["\']',
@@ -82,91 +128,60 @@ def fetch_page_info(url: str) -> dict:
     if not result["title"]:
         m = re.search(r"<h1[^>]*>(.*?)</h1>", raw, re.I | re.S)
         if m:
-            result["title"] = html.unescape(re.sub(r"<[^>]+>", "", m.group(1))).strip()
+            result["title"] = html.unescape(
+                re.sub(r"<[^>]+>", "", m.group(1))
+            ).strip()
 
     return result
 
 
 def clean_page_title(raw_title: str) -> str:
-    """
-    Turn a page title like:
-      "Pond by Claire-Louise Bennett | Fitzcarraldo Editions"
-    into a clean search query:
-      "Pond Claire-Louise Bennett"
-    """
     t = raw_title
-
-    # "Title by Author" pattern — very common on publisher sites
     by_match = re.match(r"^(.+?)\s+by\s+(.+?)(?:\s*[\|–—:\-]|$)", t, re.I)
     if by_match:
         title  = by_match.group(1).strip()
         author = re.split(r"[\|–—]", by_match.group(2))[0].strip()
         return f"{title} {author}"
-
-    # Split on separators, take the first/longest meaningful chunk
     parts = re.split(r"\s*[\|–—]\s*", t)
     parts = [p.strip() for p in parts if len(p.strip()) > 4]
     if parts:
         return parts[0] if len(parts[0]) > 8 else " ".join(parts[:2])
-
     return t
 
 
 def get_search_query_and_cover(raw: str) -> tuple[str, str | None]:
-    """
-    Returns (search_query, cover_url_or_None).
-    cover_url comes from the page's og:image when available — always edition-accurate.
-    """
     if not is_url(raw):
-        return raw, None  # plain title — no cover from URL
+        return raw, None
 
     print("  🌐  Fetching page…")
 
-    # Amazon: use title slug for query, but still fetch og:image for cover
     if "amazon." in raw:
         m = re.search(r"amazon\.[^/]+/([A-Za-z][^/]{4,})/dp/", raw)
+        info = fetch_page_info(raw)
         if m:
             slug = m.group(1).replace("-", " ")
-            # Try to get cover from page too
-            info = fetch_page_info(raw)
-            cover = info.get("cover")
             print(f"  → query: \"{slug}\"")
-            if cover:
-                print(f"  → cover from page ✓")
-            return slug, cover
-        # ASIN only — fetch the page
-        info = fetch_page_info(raw)
-        query = clean_page_title(info["title"]) if info["title"] else raw
-        return query, info.get("cover")
+            if info.get("cover"): print("  → cover from page ✓")
+            return slug, info.get("cover")
+        if info["title"]:
+            return clean_page_title(info["title"]), info.get("cover")
 
-    # Goodreads: use slug for query, fetch page for cover
     if "goodreads.com" in raw:
         m = re.search(r"goodreads\.com/book/show/\d+[.-](.+?)(?:\?|$)", raw)
         info = fetch_page_info(raw)
-        cover = info.get("cover")
         if m:
-            slug = m.group(1).replace("-", " ").replace("_", " ")
-            print(f"  → query: \"{slug}\"")
-            return slug, cover
+            return m.group(1).replace("-", " ").replace("_", " "), info.get("cover")
         if info["title"]:
-            query = clean_page_title(info["title"])
-            return query, cover
+            return clean_page_title(info["title"]), info.get("cover")
 
-    # Everything else: fetch page for both title and cover
     info = fetch_page_info(raw)
-
-    if info["cover"]:
-        print(f"  → cover image found on page ✓")
-    else:
-        print(f"  → no cover image on page, will use Google Books")
-
+    if info.get("cover"): print("  → cover image found on page ✓")
     if info["title"]:
         query = clean_page_title(info["title"])
         print(f"  → page title: \"{info['title']}\"")
-        print(f"  → searching: \"{query}\"")
+        print(f"  → searching:  \"{query}\"")
         return query, info.get("cover")
 
-    # Last resort: ask user
     print("  ⚠️  Couldn't extract a title from that page.")
     fallback = input("  Enter the book title/author manually: ").strip()
     return fallback, None
@@ -190,13 +205,10 @@ def search_google_books(query: str) -> dict | None:
 
     if re.fullmatch(r"\d{13}", clean):
         items = _gb_fetch(f"{base}?q=isbn:{clean}")
-        if items:
-            return _parse_volume(items[0])
+        if items: return _parse_volume(items[0])
 
     items = _gb_fetch(f"{base}?q={urllib.parse.quote(query)}&maxResults=5")
-    if items:
-        return _parse_volume(items[0])
-
+    if items: return _parse_volume(items[0])
     return None
 
 
@@ -209,42 +221,39 @@ def _parse_volume(item: dict) -> dict:
     cover = re.sub(r"&zoom=\d", "", cover).replace("http://", "https://")
     cats  = info.get("categories", [])
     return {
-        "google_id":      item.get("id", ""),
-        "title":          info.get("title", "Unknown Title"),
-        "author":         ", ".join(info.get("authors", ["Unknown Author"])),
-        "publisher":      info.get("publisher", ""),
-        "published_year": (info.get("publishedDate") or "")[:4],
-        "genre":          cats[0] if cats else "",
-        "description":    info.get("description", ""),
-        "isbn":           ids.get("ISBN_13") or ids.get("ISBN_10", ""),
-        "cover_url":      cover,  # may be overridden by page cover
+        "googleId":      item.get("id", ""),
+        "title":         info.get("title", "Unknown Title"),
+        "author":        ", ".join(info.get("authors", ["Unknown Author"])),
+        "publisher":     info.get("publisher", ""),
+        "publishedYear": (info.get("publishedDate") or "")[:4],
+        "genre":         cats[0] if cats else "",
+        "isbn":          ids.get("ISBN_13") or ids.get("ISBN_10", ""),
+        "coverUrl":      cover,
     }
 
 
-# ── User prompt ───────────────────────────────
+# ── Prompt ────────────────────────────────────
 
 def prompt_user(book: dict) -> dict | None:
     print()
     print("─" * 52)
     print(f"  📖  {book['title']}")
     print(f"  ✍️   {book['author']}")
-    if book["publisher"]:
-        print(f"  🏠  {book['publisher']} ({book['published_year']})")
-    if book["genre"]:
+    if book.get("publisher"):
+        print(f"  🏠  {book['publisher']} ({book.get('publishedYear', '')})")
+    if book.get("genre"):
         print(f"  🏷   {book['genre']}")
-    cover_src = book.get("cover_source", "Google Books")
-    print(f"  🖼   {'Cover: ' + cover_src if book['cover_url'] else 'No cover image found'}")
+    src = book.get("coverSource", "Google Books")
+    print(f"  🖼   {'Cover: ' + src if book.get('coverUrl') else 'No cover image'}")
     print("─" * 52)
 
     if input("  Is this the right book? [Y/n]: ").strip().lower() == "n":
         new_query = input("  Enter title/author to search instead: ").strip()
-        if not new_query:
-            return None
+        if not new_query: return None
         new_book = search_google_books(new_query)
         if not new_book:
-            print("  ✗ Couldn't find it. Try a different title/author combo.")
+            print("  ✗ Couldn't find it.")
             return None
-        new_book["cover_source"] = "Google Books"
         return prompt_user(new_book)
 
     print()
@@ -253,8 +262,7 @@ def prompt_user(book: dict) -> dict | None:
     print("    2 → To Buy   (I want it)")
     print("    3 → Read     (finished)")
     choice   = input("  Choice [1/2/3, default 1]: ").strip()
-    list_map = {"1": "To Read", "2": "To Buy", "3": "Read"}
-    book["list"] = list_map.get(choice, "To Read")
+    book["list"] = {"1": "To Read", "2": "To Buy", "3": "Read"}.get(choice, "To Read")
 
     tags_raw      = input("  Tags (comma-separated, or blank): ").strip()
     book["tags"]  = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else []
@@ -262,52 +270,43 @@ def prompt_user(book: dict) -> dict | None:
     return book
 
 
-# ── Airtable ──────────────────────────────────
+# ── Firebase ──────────────────────────────────
 
-def check_duplicate(google_id: str) -> bool:
-    formula = urllib.parse.quote(f"{{Google Books ID}} = '{google_id}'")
-    url = (f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/"
-           f"{urllib.parse.quote(AIRTABLE_TABLE)}?filterByFormula={formula}&maxRecords=1")
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {AIRTABLE_API_KEY}"})
+def check_duplicate(db, google_id: str) -> bool:
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return len(json.loads(resp.read()).get("records", [])) > 0
+        from google.cloud.firestore_v1.base_query import FieldFilter
+        docs = (db.collection("books")
+                  .where(filter=FieldFilter("googleId", "==", google_id))
+                  .limit(1).get())
     except Exception:
-        return False
+        # older firebase-admin fallback
+        docs = (db.collection("books")
+                  .where("googleId", "==", google_id)
+                  .limit(1).get())
+    return len(docs) > 0
 
 
-def save_to_airtable(book: dict) -> bool:
-    fields = {
-        "Title":           book["title"],
-        "Author":          book["author"],
-        "Cover URL":       book["cover_url"],
-        "Genre":           book["genre"],
-        "Publisher":       book["publisher"],
-        "ISBN":            book["isbn"],
-        "Google Books ID": book["google_id"],
-        "List":            book["list"],
-        "Date Added":      date.today().isoformat(),
+def save_to_firebase(db, book: dict) -> bool:
+    doc = {
+        "title":         book["title"],
+        "author":        book["author"],
+        "coverUrl":      book.get("coverUrl", ""),
+        "genre":         book.get("genre", ""),
+        "publisher":     book.get("publisher", ""),
+        "isbn":          book.get("isbn", ""),
+        "googleId":      book.get("googleId", ""),
+        "publishedYear": book.get("publishedYear", ""),
+        "list":          book["list"],
+        "tags":          book.get("tags", []),
+        "notes":         book.get("notes", ""),
+        "dateAdded":     datetime.now(timezone.utc),
     }
-    if book.get("published_year"):
-        try:    fields["Published Year"] = int(book["published_year"])
-        except ValueError: pass
-    if book.get("tags"):   fields["Tags"]  = book["tags"]
-    if book.get("notes"):  fields["Notes"] = book["notes"]
-
-    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{urllib.parse.quote(AIRTABLE_TABLE)}"
-    req = urllib.request.Request(
-        url, data=json.dumps({"fields": fields}).encode(),
-        headers={"Authorization": f"Bearer {AIRTABLE_API_KEY}",
-                 "Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read())
+        db.collection("books").add(doc)
         print(f"\n  ✅  Saved! \"{book['title']}\" → {book['list']}")
         return True
-    except urllib.error.HTTPError as e:
-        print(f"\n  ✗  Airtable error {e.code}: {e.read().decode()}")
+    except Exception as e:
+        print(f"\n  ✗  Firebase error: {e}")
         return False
 
 
@@ -321,40 +320,47 @@ def main():
         print('    python3 add_book.py "https://fitzcarraldoeditions.com/books/pond"')
         print('    python3 add_book.py "https://www.amazon.com/dp/0374533555"')
         print('    python3 add_book.py "https://www.versobooks.com/products/123"')
-        print('    python3 add_book.py "https://www.waterstones.com/book/..."')
         print()
         print("  Or plain title/author:")
         print('    python3 add_book.py "Pond Claire-Louise Bennett"')
+        sys.exit(1)
+
+    # Install check
+    try:
+        import firebase_admin
+    except ImportError:
+        print("\n  ✗  firebase-admin is not installed.")
+        print("     Run this first:")
+        print("     pip3 install firebase-admin --break-system-packages")
         sys.exit(1)
 
     raw = " ".join(sys.argv[1:])
     print(f"\n🔍  Looking up: {raw}")
 
     query, page_cover = get_search_query_and_cover(raw)
-
     if not query:
         print("  ✗  No search query — exiting.")
         sys.exit(1)
 
     book = search_google_books(query)
-
     if not book:
         print(f"  ✗  Couldn't find a match for \"{query}\".")
         retry = input("  Try a different title/author? (or Enter to exit): ").strip()
-        if retry:
-            book = search_google_books(retry)
+        if retry: book = search_google_books(retry)
         if not book:
             print("  ✗  No match found. Exiting.")
             sys.exit(1)
 
-    # Prefer the page's own cover (edition-accurate) over Google Books cover
+    # Page cover takes priority — it's always the right edition
     if page_cover:
-        book["cover_url"]    = page_cover
-        book["cover_source"] = "page image ✓"
+        book["coverUrl"]    = page_cover
+        book["coverSource"] = "page ✓"
     else:
-        book["cover_source"] = "Google Books"
+        book["coverSource"] = "Google Books"
 
-    if book["google_id"] and check_duplicate(book["google_id"]):
+    db = init_firebase()
+
+    if book.get("googleId") and check_duplicate(db, book["googleId"]):
         print(f"\n  ⚠️   \"{book['title']}\" is already in your library!")
         if input("  Add again anyway? [y/N]: ").strip().lower() != "y":
             sys.exit(0)
@@ -364,7 +370,7 @@ def main():
         print("  Cancelled.")
         sys.exit(0)
 
-    save_to_airtable(confirmed)
+    save_to_firebase(db, confirmed)
 
 
 if __name__ == "__main__":

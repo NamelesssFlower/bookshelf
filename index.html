@@ -564,12 +564,23 @@ footer {
 
 <footer>Updated live · My Library</footer>
 
-<script>
-// ─── CONFIG ───────────────────────────────────
-const AIRTABLE_API_KEY = "patfe9Lvrx5VRxgZ6.9d03ef17ad51be02a10b644af5ee1e7d95c439d2c1cfc702a74497bb9df6eb43";
-const AIRTABLE_BASE_ID = "appVVvwt9KyiMkf6T";
-const AIRTABLE_TABLE   = "Books";
-// ─────────────────────────────────────────────
+<script type="module">
+// ─── Firebase config (safe to be public — read-only rules enforced server-side) ───
+import { initializeApp }              from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getFirestore, collection,
+         getDocs, query, orderBy }    from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyDZWjj5u6FtqY-byekmablDkk40b8kcUXc",
+  authDomain:        "bookshelf-1d2b7.firebaseapp.com",
+  projectId:         "bookshelf-1d2b7",
+  storageBucket:     "bookshelf-1d2b7.firebasestorage.app",
+  messagingSenderId: "716964465801",
+  appId:             "1:716964465801:web:6811f3faf996eda5ae8a58"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
 
 let allBooks    = [];
 let activeList  = "all";
@@ -584,30 +595,16 @@ function placeholderColor(str) {
   return PLACEHOLDER_COLORS[Math.abs(h) % PLACEHOLDER_COLORS.length];
 }
 
-// ── Fetch ──────────────────────────────────────
+// ── Fetch from Firestore ───────────────────────
 async function fetchBooks() {
-  let records = [], offset = null;
-  do {
-    const p = new URLSearchParams({
-      "sort[0][field]": "Date Added",
-      "sort[0][direction]": "desc",
-      pageSize: "100",
-    });
-    if (offset) p.set("offset", offset);
-    const r = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}?${p}`,
-      { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
-    );
-    const d = await r.json();
-    records = records.concat(d.records || []);
-    offset = d.offset || null;
-  } while (offset);
-  return records.map(r => ({ id: r.id, ...r.fields }));
+  const q    = query(collection(db, "books"), orderBy("dateAdded", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
 // ── Render grid ────────────────────────────────
 function renderGrid(books) {
-  const grid = document.getElementById("grid");
+  const grid  = document.getElementById("grid");
   const label = document.getElementById("sectionLabel");
 
   if (!books.length) {
@@ -619,17 +616,17 @@ function renderGrid(books) {
   label.innerHTML = `Showing <span>${books.length}</span> book${books.length !== 1 ? "s" : ""}`;
 
   grid.innerHTML = books.map((b, i) => {
-    const listKey  = (b["List"] || "").toLowerCase().replace(/\s+/g,"-");
+    const listKey  = (b.list || "").toLowerCase().replace(/\s+/g, "-");
     const dotClass = { "to-read":"dot-to-read","to-buy":"dot-to-buy","read":"dot-read" }[listKey] || "";
     const delay    = Math.min(i * 25, 500);
-    const cover    = b["Cover URL"] || "";
-    const cpClass  = placeholderColor(b.Title || "");
+    const cover    = b.coverUrl || "";
+    const cpClass  = placeholderColor(b.title || "");
 
     const coverHtml = cover
-      ? `<img src="${esc(cover)}" alt="${esc(b.Title||"")}" loading="lazy"/>`
+      ? `<img src="${esc(cover)}" alt="${esc(b.title||"")}" loading="lazy"/>`
       : `<div class="cover-placeholder ${cpClass}">
-           <div class="cp-title">${esc(b.Title||"")}</div>
-           <div class="cp-author">${esc(b.Author||"")}</div>
+           <div class="cp-title">${esc(b.title||"")}</div>
+           <div class="cp-author">${esc(b.author||"")}</div>
          </div>`;
 
     return `
@@ -639,8 +636,8 @@ function renderGrid(books) {
         ${dotClass ? `<div class="list-dot ${dotClass}"></div>` : ""}
       </div>
       <div class="book-meta">
-        <div class="meta-title">${esc(b.Title||"Untitled")}</div>
-        <div class="meta-author">${esc(b.Author||"")}</div>
+        <div class="meta-title">${esc(b.title||"Untitled")}</div>
+        <div class="meta-author">${esc(b.author||"")}</div>
       </div>
     </div>`;
   }).join("");
@@ -649,7 +646,7 @@ function renderGrid(books) {
 // ── Render tags ────────────────────────────────
 function renderTags(books) {
   const counts = {};
-  books.forEach(b => (b["Tags"]||[]).forEach(t => counts[t] = (counts[t]||0)+1));
+  books.forEach(b => (b.tags||[]).forEach(t => counts[t] = (counts[t]||0)+1));
   const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,24);
   const bar = document.getElementById("tagBar");
   if (!sorted.length) { bar.innerHTML=""; return; }
@@ -660,65 +657,64 @@ function renderTags(books) {
 
 // ── Stats ──────────────────────────────────────
 function renderStats(all) {
-  document.getElementById("statToRead").textContent = all.filter(b=>b["List"]==="To Read").length;
-  document.getElementById("statToBuy").textContent  = all.filter(b=>b["List"]==="To Buy").length;
-  document.getElementById("statRead").textContent   = all.filter(b=>b["List"]==="Read").length;
+  document.getElementById("statToRead").textContent = all.filter(b=>b.list==="To Read").length;
+  document.getElementById("statToBuy").textContent  = all.filter(b=>b.list==="To Buy").length;
+  document.getElementById("statRead").textContent   = all.filter(b=>b.list==="Read").length;
 }
 
 // ── Filter ─────────────────────────────────────
 function applyFilters() {
   let books = allBooks;
-  if (activeList !== "all") books = books.filter(b => b["List"] === activeList);
-  if (activeTag)            books = books.filter(b => (b["Tags"]||[]).includes(activeTag));
+  if (activeList !== "all") books = books.filter(b => b.list === activeList);
+  if (activeTag)            books = books.filter(b => (b.tags||[]).includes(activeTag));
   if (searchQuery)          books = books.filter(b =>
-    (b.Title||"").toLowerCase().includes(searchQuery) ||
-    (b.Author||"").toLowerCase().includes(searchQuery)
+    (b.title||"").toLowerCase().includes(searchQuery) ||
+    (b.author||"").toLowerCase().includes(searchQuery)
   );
   renderGrid(books);
 }
 
 // ── Modal ──────────────────────────────────────
-function openModal(id) {
+window.openModal = function(id) {
   const b = allBooks.find(x => x.id === id);
   if (!b) return;
-  const listKey  = (b["List"]||"").toLowerCase().replace(/\s+/g,"-");
-  const listLabel = b["List"] || "";
+  const listKey   = (b.list||"").toLowerCase().replace(/\s+/g,"-");
   const mltClass  = { "to-read":"mlt-to-read","to-buy":"mlt-to-buy","read":"mlt-read" }[listKey]||"";
-  const cover = b["Cover URL"]||"";
-  const cpClass = placeholderColor(b.Title||"");
+  const cover     = b.coverUrl||"";
+  const cpClass   = placeholderColor(b.title||"");
 
   const coverHtml = cover
-    ? `<img src="${esc(cover)}" alt="${esc(b.Title||"")}"/>`
+    ? `<img src="${esc(cover)}" alt="${esc(b.title||"")}"/>`
     : `<div class="cover-placeholder ${cpClass}" style="width:100%;height:100%;border-radius:3px">
-         <div class="cp-title">${esc(b.Title||"")}</div>
-         <div class="cp-author">${esc(b.Author||"")}</div>
+         <div class="cp-title">${esc(b.title||"")}</div>
+         <div class="cp-author">${esc(b.author||"")}</div>
        </div>`;
 
-  const tags = (b["Tags"]||[]).map(t=>`<span class="modal-tag">${esc(t)}</span>`).join("");
+  const tags = (b.tags||[]).map(t=>`<span class="modal-tag">${esc(t)}</span>`).join("");
 
   document.getElementById("modalBody").innerHTML = `
     <div class="modal-cover-wrap">${coverHtml}</div>
     <div class="modal-info">
-      ${listLabel ? `<span class="modal-list-tag ${mltClass}">${listLabel}</span>` : ""}
-      <h2 class="modal-title">${esc(b.Title||"Untitled")}</h2>
-      <p class="modal-author">${esc(b.Author||"")}</p>
-      ${b.Publisher ? `<p class="modal-detail"><strong>Publisher</strong> ${esc(b.Publisher)}</p>` : ""}
-      ${b["Published Year"] ? `<p class="modal-detail"><strong>Year</strong> ${b["Published Year"]}</p>` : ""}
-      ${b.Genre ? `<p class="modal-detail"><strong>Genre</strong> ${esc(b.Genre)}</p>` : ""}
+      ${b.list ? `<span class="modal-list-tag ${mltClass}">${b.list}</span>` : ""}
+      <h2 class="modal-title">${esc(b.title||"Untitled")}</h2>
+      <p class="modal-author">${esc(b.author||"")}</p>
+      ${b.publisher ? `<p class="modal-detail"><strong>Publisher</strong> ${esc(b.publisher)}</p>` : ""}
+      ${b.publishedYear ? `<p class="modal-detail"><strong>Year</strong> ${b.publishedYear}</p>` : ""}
+      ${b.genre ? `<p class="modal-detail"><strong>Genre</strong> ${esc(b.genre)}</p>` : ""}
       ${tags ? `<div class="modal-tags">${tags}</div>` : ""}
-      ${b.Notes ? `<div class="modal-notes">${esc(b.Notes)}</div>` : ""}
+      ${b.notes ? `<div class="modal-notes">${esc(b.notes)}</div>` : ""}
     </div>
   `;
   document.getElementById("modalOverlay").classList.add("open");
   document.body.style.overflow = "hidden";
 }
 
-function closeModal() {
+window.closeModal = function() {
   document.getElementById("modalOverlay").classList.remove("open");
   document.body.style.overflow = "";
 }
 
-function toggleTag(tag) {
+window.toggleTag = function(tag) {
   activeTag = activeTag === tag ? null : tag;
   renderTags(allBooks);
   applyFilters();
@@ -760,12 +756,10 @@ document.addEventListener("keydown", e => { if (e.key==="Escape") closeModal(); 
     applyFilters();
   } catch(e) {
     document.getElementById("grid").innerHTML =
-      `<p class="state-msg">Couldn't load library. Check your API key & Base ID.</p>`;
+      '<p class="state-msg">Couldn\'t load library. Check Firebase config.</p>';
     console.error(e);
   }
 })();
 </script>
 </body>
 </html>
-
-
