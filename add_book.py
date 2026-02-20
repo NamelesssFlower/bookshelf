@@ -14,6 +14,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from datetime import datetime, timezone
+import time
 
 # ── Load .env ─────────────────────────────────
 def _load_env():
@@ -50,6 +51,9 @@ def _find_service_account() -> pathlib.Path | None:
 
 SERVICE_ACCOUNT = _find_service_account()
 # ─────────────────────────────────────────────
+
+# Optional Google Books API key (set via env or in .env to increase quota)
+GOOGLE_BOOKS_API_KEY = os.environ.get("GOOGLE_BOOKS_API_KEY")
 
 
 def init_firebase():
@@ -190,13 +194,46 @@ def get_search_query_and_cover(raw: str) -> tuple[str, str | None]:
 # ── Google Books ──────────────────────────────
 
 def _gb_fetch(url: str) -> list:
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "BookTracker/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read()).get("items", [])
-    except Exception as e:
-        print(f"  ✗ Google Books error: {e}")
-        return []
+    # attach API key if provided to increase quota
+    if GOOGLE_BOOKS_API_KEY and "key=" not in url:
+        url = url + ("&" if "?" in url else "?") + "key=" + urllib.parse.quote(GOOGLE_BOOKS_API_KEY)
+
+    max_attempts = 5
+    base_delay = 1.0
+    for attempt in range(1, max_attempts + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "BookTracker/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read()).get("items", [])
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                # Rate limited — respect Retry-After if present, otherwise exponential backoff
+                retry_after = None
+                try:
+                    retry_after = e.headers.get("Retry-After")
+                except Exception:
+                    retry_after = None
+                if retry_after:
+                    try:
+                        wait = float(retry_after)
+                    except Exception:
+                        wait = base_delay * (2 ** (attempt - 1))
+                else:
+                    wait = base_delay * (2 ** (attempt - 1))
+                print(f"  ✗ Google Books rate-limited (429). Retrying in {wait:.1f}s (attempt {attempt}/{max_attempts})")
+                time.sleep(wait)
+                continue
+            else:
+                print(f"  ✗ Google Books HTTP error {e.code}: {e.reason}")
+                return []
+        except Exception as e:
+            print(f"  ✗ Google Books error: {e}")
+            if attempt < max_attempts:
+                wait = base_delay * (2 ** (attempt - 1))
+                time.sleep(wait)
+                continue
+            return []
+    return []
 
 
 def search_google_books(query: str) -> dict | None:
