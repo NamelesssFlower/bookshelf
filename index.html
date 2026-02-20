@@ -571,7 +571,7 @@ footer {
 // ─── Firebase config (safe to be public — read-only rules enforced server-side) ───
 import { initializeApp }              from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
 import { getFirestore, collection,
-         getDocs, query, orderBy, doc, updateDoc }    from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+         getDocs, query, orderBy, doc, updateDoc, deleteDoc }    from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -706,11 +706,12 @@ window.openModal = function(id) {
   document.getElementById("modalBody").innerHTML = `
     <div class="modal-cover-wrap">${coverHtml}</div>
     <div class="modal-info">
-      <span id="modalListTag" class="modal-list-tag ${mltClass}">${b.list||""}</span>
-      <div style="margin:0.6rem 0 0.9rem">
+      <div style="display:flex;align-items:center;gap:0.6rem;">
+        <span id="modalListTag" class="modal-list-tag ${mltClass}">${b.list||""}</span>
         <select id="modal-list-select" onchange="onModalListChange('${esc(b.id)}', this)">
           ${optNone}${optToRead}${optToBuy}${optRead}
         </select>
+        <button id="modal-delete-btn" class="filter-btn" style="background:var(--blush);border-color:var(--blush);color:var(--ink);" onclick="onModalDelete('${esc(b.id)}')">Delete</button>
       </div>
       <h2 class="modal-title">${esc(b.title||"Untitled")}</h2>
       <p class="modal-author">${esc(b.author||"")}</p>
@@ -786,6 +787,9 @@ function updateAuthButton(user) {
   }
 }
 
+// expose auth for debugging in the console
+window.auth = auth;
+
 onAuthStateChanged(auth, user => {
   updateAuthButton(user);
 });
@@ -807,6 +811,40 @@ function updateBookListLocally(bookId, newList) {
     tagEl.textContent = b.list || '';
   }
 }
+
+// Remove a book locally and attempt to delete from Firestore
+window.onModalDelete = async function(bookId) {
+  if (!confirm('Delete this book from your library? This cannot be undone.')) return;
+
+  const b = allBooks.find(x => x.id === bookId);
+  if (!b) return;
+
+  // Check auth + whitelist
+  const user = auth.currentUser;
+  if (!user) {
+    alert('You must be signed in with an authorized account to delete books.');
+    return;
+  }
+
+  // Attempt to delete from Firestore
+  try {
+    const docRef = doc(db, 'books', bookId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Could not delete from Firestore:', err);
+    const msg = (err && (err.message || err.code)) || String(err);
+    alert('Failed to delete from server: ' + msg + '\nSee console for full error.');
+    return;
+  }
+
+  // Remove locally and refresh UI
+  const idx = allBooks.findIndex(x => x.id === bookId);
+  if (idx !== -1) allBooks.splice(idx, 1);
+  renderStats(allBooks);
+  renderTags(allBooks);
+  applyFilters();
+  closeModal();
+};
 
 // ── Events ─────────────────────────────────────
 document.querySelectorAll(".filter-btn").forEach(btn => {
