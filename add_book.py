@@ -65,20 +65,33 @@ def init_firebase():
         print("\n  ✗  firebase-admin is not installed.")
         print("     Fix: pip3 install firebase-admin --break-system-packages")
         sys.exit(1)
+    # Prefer explicit service account JSON if available
+    if SERVICE_ACCOUNT is not None and pathlib.Path(SERVICE_ACCOUNT).exists():
+        print(f"  🔑  Service account: {SERVICE_ACCOUNT.name}")
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(str(SERVICE_ACCOUNT))
+            firebase_admin.initialize_app(cred)
+        return firestore.client()
 
-    if SERVICE_ACCOUNT is None:
-        print("\n  ✗  Service account JSON not found.")
-        print("     Make sure this file is in the same folder as add_book.py:")
-        print("     bookshelf-1d2b7-firebase-adminsdk-fbsvc-e366add83c.json")
+    # Fallback to GOOGLE_APPLICATION_CREDENTIALS env var path
+    env_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if env_path and pathlib.Path(env_path).exists():
+        print(f"  🔑  Using service account from GOOGLE_APPLICATION_CREDENTIALS: {env_path}")
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(str(env_path))
+            firebase_admin.initialize_app(cred)
+        return firestore.client()
+
+    # Fallback to application-default credentials (useful on Cloud Run when
+    # the runtime service account has been granted Firestore permissions).
+    try:
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app()
+        return firestore.client()
+    except Exception:
+        print("\n  ✗  Could not initialize firebase-admin. No service account found and ADC failed.")
+        print("     Set GOOGLE_APPLICATION_CREDENTIALS or deploy to Cloud Run with a service account that has Firestore access.")
         sys.exit(1)
-
-    print(f"  🔑  Service account: {SERVICE_ACCOUNT.name}")
-
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(str(SERVICE_ACCOUNT))
-        firebase_admin.initialize_app(cred)
-
-    return firestore.client()
 
 
 # ── Page fetching ─────────────────────────────

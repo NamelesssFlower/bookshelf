@@ -48,4 +48,6 @@ jobs:
             --image "$IMAGE" \
             --region ${{ secrets.GCP_REGION }} \
             --platform managed \
-            --allow-unauthenticated
+            --allow-unauthenticated \
+            --service-account ${{ secrets.CLOUD_RUN_SA }} \
+            --set-env-vars AIRTABLE_API_KEY=${{ secrets.AIRTABLE_API_KEY }},AIRTABLE_BASE_ID=${{ secrets.AIRTABLE_BASE_ID }},AIRTABLE_TABLE=${{ secrets.AIRTABLE_TABLE }},GOOGLE_BOOKS_API_KEY=${{ secrets.GOOGLE_BOOKS_API_KEY }}
